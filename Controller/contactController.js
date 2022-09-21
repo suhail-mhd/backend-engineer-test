@@ -1,163 +1,130 @@
-const Contact = require("../Model/contactModel");
-const { check, validationResult } = require("express-validator");
-const fastcsv = require("fast-csv");
-const fs = require("fs");
-const ws = fs.createWriteStream("data.csv");
-const multer = require('multer');
-const {upload, cloudinary, storage} = require('../Util/cloudinary');
+const asyncHandler = require("express-async-handler");
+const { Contact } = require("../Model/contactModel");
+const csv = require("csv-express");
 
-
-
-
-exports.createContact = async (req, res,next) => {
+//create new contacts
+const addContact = asyncHandler(async (req, res) => {
+  const { name, phone } = req.body;
+  const image = req.file ? req.file.path : null;
   try {
-
-    const errors = validationResult(req);
-
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        errors: errors.array(),
-      });
+    const numberExist = await Contact.findOne({ phone: phone });
+    if (numberExist) {
+      res.status(400).json("number already added")  
     }
-
-    const { name, mobile } = req.body;
- 
-    // console.log("reqfilesss",req.files);
-    const contactImage = req.file ? req.file.path : null;
-   
-    const duplicateMobile = await Contact.findOne({ mobile: mobile });
-
-    if (!duplicateMobile) {
-      const duplicateName = await Contact.findOne({ name: name });
-      if (!duplicateName) {
-        const obj = {
-          name,
-          mobile,
-          image:contactImage
-        }
-
-        const saveResult =  new Contact (obj);
-        await saveResult.save()
-        // const result = await Contact.create({
-        //   name,
-        //   mobile,
-        //   contactImage,
-        // });
-      } else {
-        const addNumber = await Contact.updateOne(
-          { name },
-          { $addToSet: { mobile: mobile } }
-        );
-        console.log("the updated array", addNumber);
-      }
-
-      return res.status(201).json({ message: "Contact created successfully" });
+    const newContact = await Contact.create({
+      name,
+      phone,
+      image,
+    });
+    if (newContact) {
+      res.status(200).json({
+        _id: newContact._id,
+        name: newContact.name,
+        phone: newContact.phone,
+        image: newContact.image,
+      });
     } else {
-      return res.status(200).json({
-        errors: [
-          {
-            mobile: duplicate.mobile,
-            msg: "The user already exists",
-          },
-        ],
-      });
+      res.status(400);
+      throw new Error("error occured");
     }
-  
-  } catch (err) {
-    return res.status(404).json({ created: false, err: err.message });
+  } catch (error) {
+   console.log("some error occured")
   }
-};
 
+});
 
-
-
-
-exports.getAllContacts = async (req, res) => {
+//get all created contacts
+const getAllContacts = asyncHandler(async(req,res)=>{
   try {
     const allContacts = await Contact.find({});
     if (allContacts) {
-      let arra = [];
-      allContacts.forEach((contact) => {
-        let obj = {
-          Name: contact.name,
-          Mobile: contact.mobile,
-        };
-
-        arra.push(obj);
-      });
-
-      fastcsv
-        .write(arra, { headers: true })
-        .on("finish", function () {
-          console.log("Write to CSV successfully!");
-        })
-        .pipe(ws);
-
-      return res.status(200).json({
-        message: "The list of all the users is given below",
-        allContacts,
-      });
+      res.status(200).json(allContacts);
     } else {
-      return res.status(200).json({ message: "No contacts available" });
+      res.status(400).json("unable to fetch contacts");
     }
-  } catch (err) {
-    return res.status(404).json({ created: false, err: err.message });
+  } catch (error) {
+    res.json({message:"error ocuured"})
   }
-};
+    
+})
 
-
-
-
-
-exports.deleteContact = async (req, res) => {
+//delete contact
+const deleteContact = asyncHandler(async(req,res)=>{
   try {
     const { id } = req.params;
-    const deleteUser = await Contact.findByIdAndDelete(id);
-    const allContacts = await Contact.find({});
-    return res.status(200).json({
-      message: `The contact with the id ${id} is deleted`,
-      allContacts,
-    });
-  } catch (err) {
-    return res.status(404).json({ created: false, err: err.message });
+    console.log(id, "id");
+    return await Contact.deleteOne({ _id: id })
+      .then((response) => {
+        res.status(200).json(response);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+  } catch (error) {
+    res.json({message:"unable to delete contact"})
   }
-};
+    
+})
 
-
-
-
-exports.editContact = async (req, res) => {
+//update a contact
+const updateContact = asyncHandler(async(req,res)=>{
   try {
     const { id } = req.params;
-
-    const findUser = await Contact.findByIdAndUpdate(id, req.body);
-    const showUpdatedId = await Contact.findOne({ _id: id });
-    return res.status(200).json({
-      message: `The contact with the id ${id} is updated`,
-      showUpdatedId,
+    const image = req.file ? req.file.path : null;
+    const updateData = {
+      name: req.body.name,
+      phone: req.body.phone,
+      image: image,
+    };
+    const update = await Contact.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+      useFindAndModify: false,
     });
-  } catch (err) {
-    return res.status(404).json({ created: false, err: err.message });
+    if (update) {
+      res.status(200).json(update);
+    } else {
+      res.status(400).json({ success: false });
+    }
+  } catch (error) {
+    res.json({message:"unable to update contact"})
   }
-};
+  
+})
 
 
-
-exports.searchContact = async (req, res) => {
+//search contact by name or phone
+const searchContact = asyncHandler(async(req,res)=>{
   try {
-    const thename = req.body.name ? req.body.name : req.body.mobile;
-    console.log("thename", thename);
-    const data = await Contact.find({
-      $or: [
-        { name: { $regex: `${thename}`, $options: "i" } },
-        { mobile: { $regex: `${thename}`, $options: "i" } },
-      ],
-    });
-    return res.status(200).json({
-      message: `The contact with the query is updated`,
-      data,
-    });
-  } catch (err) {
-    return res.status(404).json({ created: false, err: err.message });
+    const searchData = req.query.name?req.query.name:req.query.phone
+    const searchResult = await Contact.find({
+      $or:[
+        {name:{$regex:`${searchData}`,$options:"i"}},
+        {phone:{$regex:`${searchData}`,$options:"i"}}
+      ]
+    })
+    return res.status(200).json({message:"The search result",searchResult})
+  } catch (error) {
+    res.status(400).json({message:"unable to find results"})
   }
+})
+
+//export to csv 
+const exportcsv = asyncHandler(async (req, res) => {
+  const filename = "contacts.csv"
+  Contact.find({}).lean().exec({},function(err,contacts){
+    if (err) res.json(err);
+    res.csv(contacts, true);
+  })
+});
+
+
+
+module.exports = {
+  addContact,
+  getAllContacts,
+  deleteContact,
+  updateContact,
+  searchContact,
+  exportcsv,
 };

@@ -1,24 +1,21 @@
 const mongoose = require("mongoose");
-const Schema = mongoose.Schema;
 
-const contactSchema = new Schema(
-  {
-    name: {
-      type: String,
-      required: [true, "Name is required"],
-      unique: true,
-    },
-    mobile: {
-      type: [String],
-      required: [true, "Mobile number is required"],
-      unique: true,
-    },
-    image: {
-      type: Array,
-      required: [true, "Contact image is required"],
-    },
+const contactSchema = mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
   },
-  { timestamps: true }
-);
+  phone: {
+    type: [String],
+    required: true,
+    unique:true
+  },
+  image: {
+    type: String,
+    required: true,
+  },
+});
 
-module.exports = mongoose.model("Contact", contactSchema);
+const Contact = mongoose.model("Contact", contactSchema);
+
+module.exports = { Contact };
